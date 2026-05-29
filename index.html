@@ -64,6 +64,24 @@
     .popup-title { font-weight: 800; margin-bottom: 4px; }
     .popup-note { color: #334155; font-size: 13px; }
     .route-label { background: rgba(15,23,42,.92); color: white; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 4px 8px; font-weight: 800; font-size: 12px; box-shadow: 0 5px 18px rgba(2,6,23,.25); }
+    .top-actions { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .mini-btn { padding: 8px 10px; font-size: 12px; border-radius: 12px; flex: 1; }
+    .panel.collapsed { width: auto; max-height: none; }
+    .panel.collapsed .controls, .panel.collapsed .body, .panel.collapsed .sub { display: none; }
+    .panel.collapsed .header { border-bottom: 0; padding: 10px; display: flex; gap: 10px; align-items: center; }
+    .panel.collapsed h1 { margin: 0; font-size: 14px; white-space: nowrap; }
+    .panel.collapsed .top-actions { margin: 0; }
+    .panel.collapsed .mini-btn:not(#collapseBtn) { display: none; }
+    .map-tools { position: absolute; z-index: 860; right: 14px; top: 14px; display: grid; gap: 8px; }
+    .tool-btn { background: rgba(15,23,42,.88); color: #fff; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 11px 13px; box-shadow: var(--shadow); min-width: 46px; }
+    .tool-btn.on { background: #fff; color: #0f172a; }
+    .status { position:absolute; z-index:870; left: 50%; transform: translateX(-50%); top: 14px; max-width: min(620px, calc(100vw - 28px)); background: rgba(15,23,42,.88); color:#fff; border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:9px 13px; font-size:12px; box-shadow: var(--shadow); display:none; }
+    .status.show { display:block; }
+    .user-dot { width: 22px; height: 22px; border-radius: 50%; background:#2563eb; border:3px solid white; box-shadow:0 0 0 8px rgba(37,99,235,.18), 0 4px 15px rgba(0,0,0,.35); }
+    .heading-arrow { width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:28px solid #2563eb; transform-origin:50% 80%; filter: drop-shadow(0 3px 5px rgba(0,0,0,.28)); }
+    .leaflet-marker-icon.heading-wrap { background: transparent; border: 0; }
+    .small-note { font-size: 12px; color: #e2e8f0; background: rgba(255,255,255,.08); border-radius: 12px; padding: 9px 10px; margin-top: 8px; }
+
     @media (max-width: 720px) {
       .panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 54dvh; border-radius: 20px 20px 0 0; }
       .header { padding: 12px 14px 9px; }
@@ -72,23 +90,36 @@
       .controls { grid-template-columns: 1fr 1fr; padding: 10px; gap: 7px; }
       button { padding: 10px 7px; font-size: 12.5px; }
       .legend { right: 10px; bottom: calc(54dvh + 12px); max-width: 205px; font-size: 11.5px; padding: 8px 10px; }
+      .map-tools { right: 10px; top: 10px; }
+      .status { top: 62px; border-radius: 14px; text-align: center; }
       .leaflet-control-zoom { margin-top: 12px !important; }
     }
     @media (max-width: 420px) {
       .controls { grid-template-columns: 1fr; }
       .panel { max-height: 60dvh; }
       .legend { display: none; }
+      .panel.collapsed { left: 10px; right: auto; bottom: 10px; border-radius: 16px; }
     }
   </style>
 </head>
 <body>
 <div id="app">
   <div id="map" aria-label="Interactive Boston Harbor route map"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <div class="map-tools" aria-label="Map tools">
+    <button id="locateBtn" class="tool-btn" type="button" title="Use current location">◎</button>
+    <button id="followBtn" class="tool-btn" type="button" title="Follow current location">⌖</button>
+    <button id="compassBtn" class="tool-btn" type="button" title="Enable compass heading">🧭</button>
+  </div>
 
   <section class="panel" aria-label="Route controls">
     <div class="header">
       <h1>Boston Electric Boat Routes</h1>
       <p class="sub">Mobile-friendly planning map from Lewis Wharf. Follow the rental company’s onboard map/navigation first.</p>
+      <div class="top-actions">
+        <button id="collapseBtn" class="mini-btn" type="button">Collapse map panel</button>
+        <button id="locateBtnPanel" class="mini-btn" type="button">Use my location</button>
+      </div>
     </div>
     <div class="controls" role="tablist" aria-label="Choose a route">
       <button class="active" data-route="romantic">Romantic</button>
@@ -136,7 +167,7 @@
       <article id="card-all" class="route-card">
         <span class="badge"><i class="dot" style="background:var(--amber)"></i> Overview</span>
         <h2>All routes shown</h2>
-        <p>This view is useful before departure. Pick one route once you’re underway so you’re not staring at your phone.</p>
+        <p>This view is useful before departure. Pick one route once you’re underway so you’re not staring at your phone.</p><div class="small-note">North side note: the company guide labels Tobin Bridge and Encore Boston Harbor, but still follow the onboard marked territory. The app marks a north advisory line as a reminder, not as an official legal boundary.</div>
       </article>
       <div class="links">
         <a href="https://www.google.com/maps/search/?api=1&query=Boston%20Electric%20Boats%2028%20Atlantic%20Ave%20Boston%20MA" target="_blank" rel="noopener">Open launch point in Google Maps</a>
@@ -151,6 +182,7 @@
     <div><span class="pill" style="background:var(--blue)"></span> Greatest Hits</div>
     <div><span class="pill" style="background:var(--green)"></span> History</div>
     <div><span class="pill" style="background:var(--danger); border-top: 2px dashed #7f1d1d;"></span> Do not pass / no locks</div>
+    <div><span class="pill" style="background:#f59e0b; border-top: 2px dashed #92400e;"></span> North advisory</div>
   </aside>
 </div>
 
@@ -180,6 +212,7 @@ window.addEventListener('load', () => {
         <text x="405" y="480" font-size="22" font-weight="800" fill="#0f172a" opacity=".7">Seaport</text>
         <line x1="580" y1="185" x2="500" y2="395" stroke="#ef4444" stroke-width="8" stroke-dasharray="14 12" opacity=".85"/>
         <line x1="185" y1="120" x2="230" y2="90" stroke="#ef4444" stroke-width="7" stroke-dasharray="10 10" opacity=".85"/>
+        <line x1="200" y1="40" x2="520" y2="55" stroke="#f59e0b" stroke-width="7" stroke-dasharray="10 10" opacity=".85"/>
         <path id="svg-romantic" d="${fallbackRoutes.romantic}" fill="none" stroke="#fb7185" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
         <path id="svg-greatest" d="${fallbackRoutes.greatest}" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)" style="display:none"/>
         <path id="svg-history" d="${fallbackRoutes.history}" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)" style="display:none"/>
@@ -194,6 +227,7 @@ window.addEventListener('load', () => {
           <text x="506" y="355">ICA / Seaport</text>
           <text x="500" y="418" fill="#7f1d1d">Do not pass Legal/Hyatt line</text>
           <text x="155" y="150" fill="#7f1d1d">No Charles locks</text>
+          <text x="255" y="35" fill="#92400e">North: verify onboard marked route</text>
         </g>
       </svg>`;
 
@@ -211,6 +245,14 @@ window.addEventListener('load', () => {
       btn.onclick = () => setFallback(btn.dataset.route);
     });
     setFallback('romantic');
+    const panel = document.querySelector('.panel');
+    const collapseBtn = document.getElementById('collapseBtn');
+    if (collapseBtn) collapseBtn.onclick = () => {
+      panel.classList.toggle('collapsed');
+      collapseBtn.textContent = panel.classList.contains('collapsed') ? 'Open panel' : 'Collapse map panel';
+    };
+    const showStatus = (msg) => { const st=document.getElementById('status'); st.textContent=msg; st.classList.add('show'); setTimeout(()=>st.classList.remove('show'), 5000); };
+    ['locateBtn','locateBtnPanel','followBtn','compassBtn'].forEach(id => { const b=document.getElementById(id); if(b) b.onclick=()=>showStatus('Location/compass need the live map and HTTPS. GitHub Pages will support this on mobile if permission is allowed.'); });
   }
 
   if (!window.L) {
@@ -236,7 +278,11 @@ window.addEventListener('load', () => {
     hyattLogan: [42.35910, -71.02695],
     turnBeforeBoundary: [42.35315, -71.03615],
     tobinView: [42.38500, -71.04740],
-    encore: [42.39440, -71.07110]
+    encore: [42.39440, -71.07110],
+    northAdvisoryA: [42.38900, -71.05250],
+    northAdvisoryB: [42.38750, -71.03450],
+    mysticAdvisoryA: [42.39820, -71.07700],
+    mysticAdvisoryB: [42.39180, -71.06400]
   };
 
   const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([42.362, -71.047], 14);
@@ -262,7 +308,8 @@ window.addEventListener('load', () => {
     greatest: { color: '#38bdf8', weight: 5, opacity: .88 },
     history: { color: '#34d399', weight: 5, opacity: .88 },
     boundary: { color: '#ef4444', weight: 4, opacity: .95, dashArray: '10 9' },
-    caution: { color: '#ef4444', weight: 4, opacity: .85, dashArray: '5 8' }
+    caution: { color: '#ef4444', weight: 4, opacity: .85, dashArray: '5 8' },
+    advisory: { color: '#f59e0b', weight: 4, opacity: .9, dashArray: '8 8' }
   };
 
   const routes = {
@@ -279,13 +326,16 @@ window.addEventListener('load', () => {
 
   const cautionLayers = L.layerGroup([
     L.polyline([pts.hyattLogan, pts.legalHarborside], routeStyle.boundary).bindPopup('<b>Do not pass this general line</b><br>Hyatt Logan / Legal Harborside is the outward limit per the company FAQ.'),
-    L.polyline([pts.dontEnterLocks, pts.zakimView], routeStyle.caution).bindPopup('<b>No Charles River locks</b><br>Enjoy the bridge view from the harbor side, but do not go through the locks.')
+    L.polyline([pts.dontEnterLocks, pts.zakimView], routeStyle.caution).bindPopup('<b>No Charles River locks</b><br>Enjoy the bridge view from the harbor side, but do not go through the locks.'),
+    L.polyline([pts.northAdvisoryA, pts.northAdvisoryB], routeStyle.advisory).bindPopup('<b>North advisory</b><br>The company guide labels Tobin Bridge. Do not continue beyond the marked onboard route/territory.'),
+    L.polyline([pts.mysticAdvisoryA, pts.mysticAdvisoryB], routeStyle.advisory).bindPopup('<b>Mystic / Encore advisory</b><br>The company guide labels Encore Boston Harbor. Only continue this way if the onboard map clearly shows it as allowed for your rental.')
   ]).addTo(map);
 
   const labels = L.layerGroup([
     L.marker(pts.skylineDrift, {icon: L.divIcon({className:'route-label', html:'Skyline drift', iconSize:null})}),
     L.marker(pts.turnBeforeBoundary, {icon: L.divIcon({className:'route-label', html:'Turn back before boundary', iconSize:null})}),
-    L.marker(pts.zakimView, {icon: L.divIcon({className:'route-label', html:'Zakim view — no locks', iconSize:null})})
+    L.marker(pts.zakimView, {icon: L.divIcon({className:'route-label', html:'Zakim view — no locks', iconSize:null})}),
+    L.marker(pts.northAdvisoryA, {icon: L.divIcon({className:'route-label', html:'North: verify onboard route', iconSize:null})})
   ]).addTo(map);
 
   let activeLayers = L.layerGroup().addTo(map);
@@ -314,6 +364,106 @@ window.addEventListener('load', () => {
     btn.addEventListener('click', () => setRoute(btn.dataset.route));
     btn.addEventListener('touchend', (e) => { e.preventDefault(); setRoute(btn.dataset.route); }, {passive:false});
   });
+
+
+  const panel = document.querySelector('.panel');
+  const collapseBtn = document.getElementById('collapseBtn');
+  function refreshPanelButton() {
+    collapseBtn.textContent = panel.classList.contains('collapsed') ? 'Open panel' : 'Collapse map panel';
+  }
+  collapseBtn.addEventListener('click', () => {
+    panel.classList.toggle('collapsed');
+    refreshPanelButton();
+    setTimeout(() => map.invalidateSize(), 180);
+  });
+
+  const status = document.getElementById('status');
+  function showStatus(msg, timeout = 4500) {
+    status.textContent = msg;
+    status.classList.add('show');
+    clearTimeout(showStatus.timer);
+    showStatus.timer = setTimeout(() => status.classList.remove('show'), timeout);
+  }
+
+  let userMarker = null;
+  let accuracyCircle = null;
+  let headingMarker = null;
+  let watchId = null;
+  let followMe = false;
+  let lastPosition = null;
+  let lastHeading = null;
+
+  function updateUserLocation(pos) {
+    const latlng = [pos.coords.latitude, pos.coords.longitude];
+    lastPosition = latlng;
+    const acc = pos.coords.accuracy || 0;
+    if (!userMarker) {
+      userMarker = L.marker(latlng, {icon: L.divIcon({className:'', html:'<div class="user-dot"></div>', iconSize:[28,28], iconAnchor:[14,14]})}).addTo(map).bindPopup('Your current location');
+      accuracyCircle = L.circle(latlng, {radius: acc, weight: 1, opacity: .35, fillOpacity: .08}).addTo(map);
+      headingMarker = L.marker(latlng, {icon: L.divIcon({className:'heading-wrap', html:'<div id="headingArrow" class="heading-arrow"></div>', iconSize:[28,36], iconAnchor:[14,30]})}).addTo(map);
+    } else {
+      userMarker.setLatLng(latlng);
+      accuracyCircle.setLatLng(latlng).setRadius(acc);
+      headingMarker.setLatLng(latlng);
+    }
+    if (typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)) setHeading(pos.coords.heading);
+    if (followMe) map.setView(latlng, Math.max(map.getZoom(), 16), {animate:true});
+    showStatus(`Location updated. GPS accuracy about ${Math.round(acc)} m.`, 2200);
+  }
+
+  function startLocation(follow = false) {
+    if (!navigator.geolocation) { showStatus('Geolocation is not supported on this device/browser.'); return; }
+    followMe = followMe || follow;
+    document.getElementById('followBtn').classList.toggle('on', followMe);
+    if (watchId === null) {
+      watchId = navigator.geolocation.watchPosition(updateUserLocation, err => {
+        showStatus(err.message || 'Could not get location. Check browser location permission.');
+      }, {enableHighAccuracy:true, maximumAge:2000, timeout:10000});
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+      updateUserLocation(pos);
+      map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16), {animate:true});
+    }, err => showStatus(err.message || 'Could not get location.'), {enableHighAccuracy:true, maximumAge:2000, timeout:10000});
+  }
+
+  function setHeading(deg) {
+    lastHeading = deg;
+    const el = document.getElementById('headingArrow');
+    if (el) el.style.transform = `rotate(${deg}deg)`;
+  }
+
+  async function enableCompass() {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const res = await DeviceOrientationEvent.requestPermission();
+        if (res !== 'granted') { showStatus('Compass permission was not granted.'); return; }
+      }
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('deviceorientation', onOrientation, true);
+      document.getElementById('compassBtn').classList.add('on');
+      showStatus('Compass enabled. Hold the phone flat; heading can be noisy near metal/electronics.');
+    } catch (e) {
+      showStatus('Compass could not be enabled in this browser.');
+    }
+  }
+
+  function onOrientation(event) {
+    let heading = null;
+    if (typeof event.webkitCompassHeading === 'number') heading = event.webkitCompassHeading;
+    else if (typeof event.alpha === 'number') heading = 360 - event.alpha;
+    if (heading !== null) setHeading((heading + 360) % 360);
+  }
+
+  document.getElementById('locateBtn').addEventListener('click', () => startLocation(false));
+  document.getElementById('locateBtnPanel').addEventListener('click', () => startLocation(true));
+  document.getElementById('followBtn').addEventListener('click', () => {
+    followMe = !followMe;
+    document.getElementById('followBtn').classList.toggle('on', followMe);
+    if (followMe) startLocation(true);
+    else showStatus('Follow mode off.');
+  });
+  document.getElementById('compassBtn').addEventListener('click', enableCompass);
+
 
   setRoute('romantic');
   setTimeout(() => map.invalidateSize(), 250);
