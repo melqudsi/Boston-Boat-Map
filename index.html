@@ -77,6 +77,9 @@
     .tool-btn.on { background: #fff; color: #0f172a; }
     .status { position:absolute; z-index:870; left: 50%; transform: translateX(-50%); top: 14px; max-width: min(620px, calc(100vw - 28px)); background: rgba(15,23,42,.88); color:#fff; border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:9px 13px; font-size:12px; box-shadow: var(--shadow); display:none; }
     .status.show { display:block; }
+    .status.danger { background: rgba(127,29,29,.96); border-color: rgba(248,113,113,.75); color: #fff; box-shadow: 0 0 0 4px rgba(239,68,68,.18), var(--shadow); }
+    .warning-icon { width: 34px; height: 34px; border-radius: 50%; background:#ef4444; color:#fff; border:3px solid #fff; display:flex; align-items:center; justify-content:center; font-size:19px; font-weight:900; box-shadow:0 0 0 9px rgba(239,68,68,.22), 0 0 22px rgba(239,68,68,.9), 0 5px 18px rgba(0,0,0,.35); animation:pulseWarn 1.1s infinite; }
+    @keyframes pulseWarn { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
     .user-dot { width: 22px; height: 22px; border-radius: 50%; background:#2563eb; border:3px solid white; box-shadow:0 0 0 8px rgba(37,99,235,.18), 0 4px 15px rgba(0,0,0,.35); }
     .heading-arrow { width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:28px solid #2563eb; transform-origin:50% 80%; filter: drop-shadow(0 3px 5px rgba(0,0,0,.28)); }
     .leaflet-marker-icon.heading-wrap { background: transparent; border: 0; }
@@ -107,9 +110,7 @@
   <div id="map" aria-label="Interactive Boston Harbor route map"></div>
   <div id="status" class="status" role="status" aria-live="polite"></div>
   <div class="map-tools" aria-label="Map tools">
-    <button id="locateBtn" class="tool-btn" type="button" title="Use current location">◎</button>
-    <button id="followBtn" class="tool-btn" type="button" title="Follow current location">⌖</button>
-    <button id="compassBtn" class="tool-btn" type="button" title="Enable compass heading">🧭</button>
+    <button id="locateBtn" class="tool-btn" type="button" title="Locate, follow, and enable compass">⌖</button>
   </div>
 
   <section class="panel" aria-label="Route controls">
@@ -118,7 +119,7 @@
       <p class="sub">Mobile-friendly planning map from Lewis Wharf. Follow the rental company’s onboard map/navigation first.</p>
       <div class="top-actions">
         <button id="collapseBtn" class="mini-btn" type="button">Collapse map panel</button>
-        <button id="locateBtnPanel" class="mini-btn" type="button">Use my location</button>
+        <button id="locateBtnPanel" class="mini-btn" type="button">Locate + follow</button>
       </div>
     </div>
     <div class="controls" role="tablist" aria-label="Choose a route">
@@ -252,7 +253,7 @@ window.addEventListener('load', () => {
       collapseBtn.textContent = panel.classList.contains('collapsed') ? 'Open panel' : 'Collapse map panel';
     };
     const showStatus = (msg) => { const st=document.getElementById('status'); st.textContent=msg; st.classList.add('show'); setTimeout(()=>st.classList.remove('show'), 5000); };
-    ['locateBtn','locateBtnPanel','followBtn','compassBtn'].forEach(id => { const b=document.getElementById(id); if(b) b.onclick=()=>showStatus('Location/compass need the live map and HTTPS. GitHub Pages will support this on mobile if permission is allowed.'); });
+    ['locateBtn','locateBtnPanel'].forEach(id => { const b=document.getElementById(id); if(b) b.onclick=()=>showStatus('Location, compass, and barrier proximity warnings need the live map and HTTPS. GitHub Pages will support this on mobile if permission is allowed.'); });
   }
 
   if (!window.L) {
@@ -312,6 +313,44 @@ window.addEventListener('load', () => {
     advisory: { color: '#f59e0b', weight: 4, opacity: .9, dashArray: '8 8' }
   };
 
+  const barrierDefs = [
+    { id:'outer', name:'Legal / Hyatt outer-harbor limit', kind:'hard', points:[pts.hyattLogan, pts.legalHarborside], popup:'Hyatt Logan / Legal Harborside is the outward limit per the company FAQ.' },
+    { id:'locks', name:'Charles River locks', kind:'hard', points:[pts.dontEnterLocks, pts.zakimView], popup:'Enjoy the Zakim view from the harbor side, but do not go through the locks.' },
+    { id:'north', name:'North advisory line', kind:'advisory', points:[pts.northAdvisoryA, pts.northAdvisoryB], popup:'North side reminder: verify the onboard marked route before continuing toward Tobin / Mystic.' },
+    { id:'mystic', name:'Mystic / Encore advisory', kind:'advisory', points:[pts.mysticAdvisoryA, pts.mysticAdvisoryB], popup:'Only continue toward Encore / Mystic if the onboard map clearly shows it as allowed for your rental.' }
+  ];
+
+  function makeBarrier(def) {
+    const baseStyle = def.kind === 'advisory' ? routeStyle.advisory : (def.id === 'locks' ? routeStyle.caution : routeStyle.boundary);
+    const base = L.polyline(def.points, baseStyle).bindPopup(`<b>${def.name}</b><br>${def.popup}`);
+    const glow = L.polyline(def.points, { color:'#ef4444', weight:18, opacity:.34, dashArray: baseStyle.dashArray }).bindPopup(`<b>⚠ Near ${def.name}</b><br>${def.popup}`);
+    const hot = L.polyline(def.points, { color:'#ef4444', weight:7, opacity:1, dashArray: baseStyle.dashArray }).bindPopup(`<b>⚠ Near ${def.name}</b><br>${def.popup}`);
+    glow._isGlow = true; hot._isGlow = true;
+    return { ...def, base, glow, hot, baseStyle };
+  }
+  const barriers = barrierDefs.map(makeBarrier);
+
+  function toXY(latlng, refLat) {
+    const lat = latlng[0] * Math.PI / 180, lng = latlng[1] * Math.PI / 180;
+    const R = 6371000;
+    return { x: R * lng * Math.cos(refLat), y: R * lat };
+  }
+  function fromXY(xy, refLat) {
+    const R = 6371000;
+    return [xy.y / R * 180 / Math.PI, xy.x / (R * Math.cos(refLat)) * 180 / Math.PI];
+  }
+  function distanceToSegmentMeters(p, a, b) {
+    const refLat = ((p[0] + a[0] + b[0]) / 3) * Math.PI / 180;
+    const P = toXY(p, refLat), A = toXY(a, refLat), B = toXY(b, refLat);
+    const dx = B.x - A.x, dy = B.y - A.y;
+    const len2 = dx*dx + dy*dy;
+    let t = len2 ? ((P.x-A.x)*dx + (P.y-A.y)*dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const closest = { x: A.x + t*dx, y: A.y + t*dy };
+    const dist = Math.hypot(P.x - closest.x, P.y - closest.y);
+    return { dist, closest: fromXY(closest, refLat) };
+  }
+
   const routes = {
     romantic: L.polyline([
       pts.launch, pts.northEnd, pts.eastBoston, pts.skylineDrift, pts.rowesWharf, pts.ica, pts.turnBeforeBoundary, pts.skylineDrift, pts.launch
@@ -324,12 +363,10 @@ window.addEventListener('load', () => {
     ], routeStyle.history).bindPopup('<b>History + Architecture Loop</b><br>North End, Coast Guard Base area, Navy Yard, USS Constitution, Zakim viewpoint.')
   };
 
-  const cautionLayers = L.layerGroup([
-    L.polyline([pts.hyattLogan, pts.legalHarborside], routeStyle.boundary).bindPopup('<b>Do not pass this general line</b><br>Hyatt Logan / Legal Harborside is the outward limit per the company FAQ.'),
-    L.polyline([pts.dontEnterLocks, pts.zakimView], routeStyle.caution).bindPopup('<b>No Charles River locks</b><br>Enjoy the bridge view from the harbor side, but do not go through the locks.'),
-    L.polyline([pts.northAdvisoryA, pts.northAdvisoryB], routeStyle.advisory).bindPopup('<b>North advisory</b><br>The company guide labels Tobin Bridge. Do not continue beyond the marked onboard route/territory.'),
-    L.polyline([pts.mysticAdvisoryA, pts.mysticAdvisoryB], routeStyle.advisory).bindPopup('<b>Mystic / Encore advisory</b><br>The company guide labels Encore Boston Harbor. Only continue this way if the onboard map clearly shows it as allowed for your rental.')
-  ]).addTo(map);
+  const cautionLayers = L.layerGroup(barriers.map(b => b.base)).addTo(map);
+  const barrierGlowLayers = L.layerGroup().addTo(map);
+  let warningMarker = null;
+  let lastWarnedBarrier = null;
 
   const labels = L.layerGroup([
     L.marker(pts.skylineDrift, {icon: L.divIcon({className:'route-label', html:'Skyline drift', iconSize:null})}),
@@ -378,12 +415,14 @@ window.addEventListener('load', () => {
   });
 
   const status = document.getElementById('status');
-  function showStatus(msg, timeout = 4500) {
+  function showStatus(msg, timeout = 4500, danger = false) {
     status.textContent = msg;
+    status.classList.toggle('danger', danger);
     status.classList.add('show');
     clearTimeout(showStatus.timer);
-    showStatus.timer = setTimeout(() => status.classList.remove('show'), timeout);
+    if (timeout) showStatus.timer = setTimeout(() => { status.classList.remove('show'); status.classList.remove('danger'); }, timeout);
   }
+
 
   let userMarker = null;
   let accuracyCircle = null;
@@ -392,6 +431,34 @@ window.addEventListener('load', () => {
   let followMe = false;
   let lastPosition = null;
   let lastHeading = null;
+
+
+  function updateBarrierWarnings(latlng) {
+    let nearest = null;
+    for (const b of barriers) {
+      const d = distanceToSegmentMeters(latlng, b.points[0], b.points[1]);
+      if (!nearest || d.dist < nearest.dist) nearest = { ...b, ...d };
+    }
+    const warnMeters = 175;
+    const urgentMeters = 75;
+    barrierGlowLayers.clearLayers();
+    if (warningMarker) { map.removeLayer(warningMarker); warningMarker = null; }
+    if (!nearest || nearest.dist > warnMeters) {
+      if (lastWarnedBarrier) showStatus('Back outside barrier warning distance.', 1800);
+      lastWarnedBarrier = null;
+      return;
+    }
+    barrierGlowLayers.addLayer(nearest.glow);
+    barrierGlowLayers.addLayer(nearest.hot);
+    warningMarker = L.marker(nearest.closest, {
+      icon: L.divIcon({className:'', html:'<div class="warning-icon">⚠</div>', iconSize:[40,40], iconAnchor:[20,20]})
+    }).addTo(map).bindPopup(`<b>⚠ Close to ${nearest.name}</b><br>About ${Math.round(nearest.dist)} m away. Turn back or verify against the company onboard map.`);
+    const urgent = nearest.dist <= urgentMeters;
+    const verb = urgent ? 'Very close to' : 'Approaching';
+    showStatus(`⚠ ${verb} ${nearest.name} — about ${Math.round(nearest.dist)} m away.`, urgent ? 0 : 6500, true);
+    if (lastWarnedBarrier !== nearest.id && urgent) warningMarker.openPopup();
+    lastWarnedBarrier = nearest.id;
+  }
 
   function updateUserLocation(pos) {
     const latlng = [pos.coords.latitude, pos.coords.longitude];
@@ -409,12 +476,15 @@ window.addEventListener('load', () => {
     if (typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)) setHeading(pos.coords.heading);
     if (followMe) map.setView(latlng, Math.max(map.getZoom(), 16), {animate:true});
     showStatus(`Location updated. GPS accuracy about ${Math.round(acc)} m.`, 2200);
+    updateBarrierWarnings(latlng);
   }
 
   function startLocation(follow = false) {
     if (!navigator.geolocation) { showStatus('Geolocation is not supported on this device/browser.'); return; }
-    followMe = followMe || follow;
-    document.getElementById('followBtn').classList.toggle('on', followMe);
+    followMe = true;
+    document.getElementById('locateBtn').classList.add('on');
+    const panelBtn = document.getElementById('locateBtnPanel');
+    if (panelBtn) panelBtn.classList.add('active');
     if (watchId === null) {
       watchId = navigator.geolocation.watchPosition(updateUserLocation, err => {
         showStatus(err.message || 'Could not get location. Check browser location permission.');
@@ -440,8 +510,8 @@ window.addEventListener('load', () => {
       }
       window.addEventListener('deviceorientationabsolute', onOrientation, true);
       window.addEventListener('deviceorientation', onOrientation, true);
-      document.getElementById('compassBtn').classList.add('on');
-      showStatus('Compass enabled. Hold the phone flat; heading can be noisy near metal/electronics.');
+      document.getElementById('locateBtn').classList.add('on');
+      showStatus('Location/follow/compass enabled. Hold the phone flat; heading can be noisy near metal/electronics.');
     } catch (e) {
       showStatus('Compass could not be enabled in this browser.');
     }
@@ -454,15 +524,18 @@ window.addEventListener('load', () => {
     if (heading !== null) setHeading((heading + 360) % 360);
   }
 
-  document.getElementById('locateBtn').addEventListener('click', () => startLocation(false));
-  document.getElementById('locateBtnPanel').addEventListener('click', () => startLocation(true));
-  document.getElementById('followBtn').addEventListener('click', () => {
-    followMe = !followMe;
-    document.getElementById('followBtn').classList.toggle('on', followMe);
-    if (followMe) startLocation(true);
-    else showStatus('Follow mode off.');
-  });
-  document.getElementById('compassBtn').addEventListener('click', enableCompass);
+  async function enableNavigationMode() {
+    followMe = true;
+    document.getElementById('locateBtn').classList.add('on');
+    const panelBtn = document.getElementById('locateBtnPanel');
+    if (panelBtn) panelBtn.classList.add('active');
+    startLocation(true);
+    await enableCompass();
+    if (lastPosition) map.setView(lastPosition, Math.max(map.getZoom(), 16), {animate:true});
+  }
+
+  document.getElementById('locateBtn').addEventListener('click', enableNavigationMode);
+  document.getElementById('locateBtnPanel').addEventListener('click', enableNavigationMode);
 
 
   setRoute('romantic');
