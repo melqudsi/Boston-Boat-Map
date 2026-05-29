@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Boston Electric Boat Route Map</title>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: rgba(15, 23, 42, .92);
+      --card2: rgba(255,255,255,.95);
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --line: rgba(255,255,255,.18);
+      --blue: #38bdf8;
+      --pink: #fb7185;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --danger: #ef4444;
+      --shadow: 0 14px 40px rgba(2, 6, 23, .35);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); }
+    #app { height: 100dvh; width: 100vw; position: relative; overflow: hidden; }
+    #map { height: 100%; width: 100%; background: #dbeafe; }
+    .leaflet-container { font: inherit; }
+    .panel {
+      position: absolute; z-index: 900; left: 14px; top: 14px; width: min(390px, calc(100vw - 28px));
+      background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 18px;
+      box-shadow: var(--shadow); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      max-height: calc(100dvh - 28px); display: flex; flex-direction: column;
+    }
+    .header { padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+    h1 { font-size: 18px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -.02em; }
+    .sub { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .controls { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button {
+      border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.08); color: var(--text);
+      padding: 11px 10px; font-weight: 700; font-size: 13px; line-height: 1.1; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.active { background: #fff; color: #0f172a; border-color: #fff; }
+    .body { padding: 0 14px 14px; overflow: auto; }
+    .route-card { display: none; border-top: 1px solid var(--line); padding-top: 12px; }
+    .route-card.active { display: block; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 5px 8px; font-size: 12px; font-weight: 800; background: rgba(255,255,255,.1); margin-bottom: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    h2 { font-size: 16px; margin: 2px 0 8px; }
+    p, li { font-size: 13px; line-height: 1.45; color: var(--muted); }
+    p { margin: 0 0 10px; }
+    ol { margin: 8px 0 0 20px; padding: 0; }
+    .warn { background: rgba(251, 191, 36, .13); border: 1px solid rgba(251, 191, 36, .35); border-radius: 14px; padding: 10px; margin-top: 10px; color: #fde68a; font-size: 12.5px; line-height: 1.35; }
+    .links { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
+    .links a { color: #bae6fd; font-size: 13px; text-decoration: none; border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; background: rgba(255,255,255,.06); }
+    .legend { position: absolute; z-index: 850; right: 14px; bottom: 24px; background: var(--card2); color: #0f172a; border-radius: 16px; padding: 10px 12px; box-shadow: var(--shadow); font-size: 12px; max-width: 250px; }
+    .legend div { display: flex; align-items: center; gap: 7px; margin: 5px 0; }
+    .pill { width: 24px; height: 5px; border-radius: 99px; display: inline-block; }
+    .leaflet-popup-content { margin: 12px 14px; line-height: 1.35; }
+    .popup-title { font-weight: 800; margin-bottom: 4px; }
+    .popup-note { color: #334155; font-size: 13px; }
+    .route-label { background: rgba(15,23,42,.92); color: white; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 4px 8px; font-weight: 800; font-size: 12px; box-shadow: 0 5px 18px rgba(2,6,23,.25); }
+    @media (max-width: 720px) {
+      .panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 54dvh; border-radius: 20px 20px 0 0; }
+      .header { padding: 12px 14px 9px; }
+      h1 { font-size: 16px; }
+      .sub { font-size: 12.5px; }
+      .controls { grid-template-columns: 1fr 1fr; padding: 10px; gap: 7px; }
+      button { padding: 10px 7px; font-size: 12.5px; }
+      .legend { right: 10px; bottom: calc(54dvh + 12px); max-width: 205px; font-size: 11.5px; padding: 8px 10px; }
+      .leaflet-control-zoom { margin-top: 12px !important; }
+    }
+    @media (max-width: 420px) {
+      .controls { grid-template-columns: 1fr; }
+      .panel { max-height: 60dvh; }
+      .legend { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="map" aria-label="Interactive Boston Harbor route map"></div>
+
+  <section class="panel" aria-label="Route controls">
+    <div class="header">
+      <h1>Boston Electric Boat Routes</h1>
+      <p class="sub">Mobile-friendly planning map from Lewis Wharf. Follow the rental company’s onboard map/navigation first.</p>
+    </div>
+    <div class="controls" role="tablist" aria-label="Choose a route">
+      <button class="active" data-route="romantic">Romantic</button>
+      <button data-route="greatest">Greatest Hits</button>
+      <button data-route="history">History</button>
+      <button data-route="all">Show all</button>
+    </div>
+    <div class="body">
+      <article id="card-romantic" class="route-card active">
+        <span class="badge"><i class="dot" style="background:var(--pink)"></i> Best for a date / 60–90 min</span>
+        <h2>Romantic Skyline Chill Loop</h2>
+        <p>Slow, easy, scenic. Cruise from Lewis Wharf toward East Boston for the best skyline angle, then pass the Seaport/ICA side without going beyond Legal Harborside.</p>
+        <ol>
+          <li>Depart Lewis Wharf slowly.</li>
+          <li>Cross toward East Boston / ReelHouse area and drift in neutral where traffic is light.</li>
+          <li>Angle toward Boston Harbor Hotel / Rowes Wharf for skyline photos.</li>
+          <li>Glide along Seaport / ICA, turning back before the Legal Harborside boundary.</li>
+          <li>Return to Lewis Wharf with extra time for a second skyline drift.</li>
+        </ol>
+        <div class="warn">No anchoring. It is okay to float in neutral if safe and away from traffic. Do not pass the Hyatt Logan / Legal Harborside line.</div>
+      </article>
+      <article id="card-greatest" class="route-card">
+        <span class="badge"><i class="dot" style="background:var(--blue)"></i> Most variety / about 2 hr</span>
+        <h2>Inner Harbor Greatest Hits</h2>
+        <p>Best backup route if the group wants landmarks: Charlestown Navy Yard, USS Constitution area, Zakim Bridge views, East Boston skyline, and the Seaport boundary turn-around.</p>
+        <ol>
+          <li>Lewis Wharf to Charlestown Navy Yard / USS Constitution area.</li>
+          <li>Nose toward the Zakim Bridge view, but do not go through the Charles River locks.</li>
+          <li>Loop back through the inner harbor toward East Boston.</li>
+          <li>Cross to Seaport / ICA and turn back before Legal Harborside.</li>
+        </ol>
+      </article>
+      <article id="card-history" class="route-card">
+        <span class="badge"><i class="dot" style="background:var(--green)"></i> Landmarks / about 2 hr</span>
+        <h2>History + Architecture Loop</h2>
+        <p>Historic waterfront feel: North End, Coast Guard Base area, Charlestown Navy Yard, USS Constitution, Cassin Young, Zakim Bridge viewpoint, then back through downtown wharves.</p>
+        <ol>
+          <li>Start at Lewis Wharf and hug the North End waterfront.</li>
+          <li>Pass the Coast Guard Base area as a point of reference only.</li>
+          <li>Continue toward USS Constitution / Cassin Young.</li>
+          <li>View Zakim from the harbor side; do not enter the locks.</li>
+          <li>Return via Boston Harbor Hotel / Rowes Wharf.</li>
+        </ol>
+      </article>
+      <article id="card-all" class="route-card">
+        <span class="badge"><i class="dot" style="background:var(--amber)"></i> Overview</span>
+        <h2>All routes shown</h2>
+        <p>This view is useful before departure. Pick one route once you’re underway so you’re not staring at your phone.</p>
+      </article>
+      <div class="links">
+        <a href="https://www.google.com/maps/search/?api=1&query=Boston%20Electric%20Boats%2028%20Atlantic%20Ave%20Boston%20MA" target="_blank" rel="noopener">Open launch point in Google Maps</a>
+        <a href="https://www.electricboatsboston.com/faq/" target="_blank" rel="noopener">Company FAQ / rules</a>
+        <a href="https://www.electricboatsboston.com/wp-content/uploads/2020/11/BostonElectricBoat-map-PRINT-1.pdf" target="_blank" rel="noopener">Company harbor map PDF</a>
+      </div>
+    </div>
+  </section>
+
+  <aside class="legend" aria-label="Map legend">
+    <div><span class="pill" style="background:var(--pink)"></span> Romantic</div>
+    <div><span class="pill" style="background:var(--blue)"></span> Greatest Hits</div>
+    <div><span class="pill" style="background:var(--green)"></span> History</div>
+    <div><span class="pill" style="background:var(--danger); border-top: 2px dashed #7f1d1d;"></span> Do not pass / no locks</div>
+  </aside>
+</div>
+
+<script>
+window.addEventListener('load', () => {
+  const fallbackRoutes = {
+    romantic: 'M 295 210 L 360 170 L 510 190 L 460 260 L 380 285 L 345 360 L 490 350 L 500 395 L 460 260 L 295 210',
+    greatest: 'M 295 210 L 350 160 L 260 90 L 210 70 L 180 120 L 250 145 L 510 190 L 460 260 L 380 285 L 345 360 L 490 350 L 295 210',
+    history: 'M 295 210 L 350 160 L 270 125 L 210 70 L 180 120 L 210 70 L 270 125 L 380 285 L 295 210'
+  };
+
+  function attachFallbackMap() {
+    const mapEl = document.getElementById('map');
+    mapEl.innerHTML = `
+      <svg viewBox="0 0 720 520" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Simplified Boston Harbor route map">
+        <defs>
+          <linearGradient id="water" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#bfdbfe"/><stop offset="1" stop-color="#7dd3fc"/></linearGradient>
+          <filter id="shadow"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-opacity=".25"/></filter>
+        </defs>
+        <rect width="720" height="520" fill="url(#water)"/>
+        <path d="M0 0 H330 C350 60 310 105 360 150 C320 190 340 230 300 270 C250 320 255 400 210 520 H0 Z" fill="#d9f99d" opacity=".9"/>
+        <path d="M720 0 H505 C555 82 600 135 575 210 C540 310 610 390 720 420 Z" fill="#bbf7d0" opacity=".95"/>
+        <path d="M410 395 C470 365 520 400 535 520 H300 C325 470 360 425 410 395 Z" fill="#fde68a" opacity=".95"/>
+        <text x="90" y="95" font-size="23" font-weight="800" fill="#0f172a" opacity=".72">Boston / North End</text>
+        <text x="65" y="435" font-size="22" font-weight="800" fill="#0f172a" opacity=".64">Downtown</text>
+        <text x="530" y="95" font-size="22" font-weight="800" fill="#0f172a" opacity=".7">East Boston</text>
+        <text x="405" y="480" font-size="22" font-weight="800" fill="#0f172a" opacity=".7">Seaport</text>
+        <line x1="580" y1="185" x2="500" y2="395" stroke="#ef4444" stroke-width="8" stroke-dasharray="14 12" opacity=".85"/>
+        <line x1="185" y1="120" x2="230" y2="90" stroke="#ef4444" stroke-width="7" stroke-dasharray="10 10" opacity=".85"/>
+        <path id="svg-romantic" d="${fallbackRoutes.romantic}" fill="none" stroke="#fb7185" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
+        <path id="svg-greatest" d="${fallbackRoutes.greatest}" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)" style="display:none"/>
+        <path id="svg-history" d="${fallbackRoutes.history}" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)" style="display:none"/>
+        <g font-family="system-ui" font-weight="800" font-size="14" fill="#0f172a">
+          <circle cx="295" cy="210" r="14" fill="#0f172a"/><text x="290" y="215" fill="white">S</text>
+          <circle cx="460" cy="260" r="13" fill="#fb7185"/><text x="455" y="265" fill="white">♡</text>
+          <circle cx="210" cy="70" r="13" fill="#34d399"/><text x="205" y="75" fill="white">H</text>
+          <circle cx="490" cy="350" r="13" fill="#38bdf8"/><text x="486" y="355" fill="white">I</text>
+          <text x="310" y="202">Lewis Wharf</text>
+          <text x="474" y="255">Skyline drift</text>
+          <text x="225" y="72">USS Constitution / Navy Yard</text>
+          <text x="506" y="355">ICA / Seaport</text>
+          <text x="500" y="418" fill="#7f1d1d">Do not pass Legal/Hyatt line</text>
+          <text x="155" y="150" fill="#7f1d1d">No Charles locks</text>
+        </g>
+      </svg>`;
+
+    function setFallback(key) {
+      document.querySelectorAll('button[data-route]').forEach(btn => btn.classList.toggle('active', btn.dataset.route === key));
+      document.querySelectorAll('.route-card').forEach(card => card.classList.remove('active'));
+      const card = document.getElementById(`card-${key}`);
+      if (card) card.classList.add('active');
+      ['romantic','greatest','history'].forEach(r => {
+        const el = document.getElementById(`svg-${r}`);
+        if (el) el.style.display = (key === 'all' || key === r) ? 'block' : 'none';
+      });
+    }
+    document.querySelectorAll('button[data-route]').forEach(btn => {
+      btn.onclick = () => setFallback(btn.dataset.route);
+    });
+    setFallback('romantic');
+  }
+
+  if (!window.L) {
+    attachFallbackMap();
+    return;
+  }
+
+  const pts = {
+    launch: [42.36315, -71.05065],
+    northEnd: [42.36505, -71.04835],
+    coastGuard: [42.36610, -71.04500],
+    navyYard: [42.37300, -71.05210],
+    ussConstitution: [42.37255, -71.05665],
+    zakimView: [42.37175, -71.06080],
+    dontEnterLocks: [42.36990, -71.05850],
+    pier6: [42.37320, -71.05100],
+    eastBoston: [42.36440, -71.03575],
+    skylineDrift: [42.36055, -71.04015],
+    rowesWharf: [42.35660, -71.04910],
+    teaParty: [42.35235, -71.05110],
+    ica: [42.35295, -71.04340],
+    legalHarborside: [42.35065, -71.04015],
+    hyattLogan: [42.35910, -71.02695],
+    turnBeforeBoundary: [42.35315, -71.03615],
+    tobinView: [42.38500, -71.04740],
+    encore: [42.39440, -71.07110]
+  };
+
+  const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([42.362, -71.047], 14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const iconHtml = (label, color) => `<div style="width:26px;height:26px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:white;font-weight:900;font-size:12px">${label}</div>`;
+  const makeIcon = (label, color) => L.divIcon({ html: iconHtml(label, color), className: '', iconSize: [26,26], iconAnchor: [13,13], popupAnchor: [0,-14] });
+
+  const markers = L.layerGroup([
+    L.marker(pts.launch, {icon: makeIcon('S', '#0f172a')}).bindPopup('<div class="popup-title">Start / Return: Lewis Wharf</div><div class="popup-note">Boston Electric Boats, 28 Atlantic Ave.</div>'),
+    L.marker(pts.skylineDrift, {icon: makeIcon('♡', '#fb7185')}).bindPopup('<div class="popup-title">Romantic skyline drift</div><div class="popup-note">Good place to float in neutral if traffic is light. No anchoring.</div>'),
+    L.marker(pts.navyYard, {icon: makeIcon('H', '#34d399')}).bindPopup('<div class="popup-title">Charlestown Navy Yard</div><div class="popup-note">USS Constitution / Cassin Young area.</div>'),
+    L.marker(pts.ica, {icon: makeIcon('I', '#38bdf8')}).bindPopup('<div class="popup-title">ICA / Seaport views</div><div class="popup-note">Scenic pass, then turn back before Legal Harborside.</div>'),
+    L.marker(pts.legalHarborside, {icon: makeIcon('!', '#ef4444')}).bindPopup('<div class="popup-title">Legal Harborside boundary area</div><div class="popup-note">Company FAQ says not to go past the Hyatt Logan / Legal Harborside line toward Castle Island / Outer Harbor.</div>'),
+    L.marker(pts.dontEnterLocks, {icon: makeIcon('!', '#ef4444')}).bindPopup('<div class="popup-title">Do not enter Charles River locks</div><div class="popup-note">Company FAQ says boats must not go through the locks into the Charles River.</div>')
+  ]).addTo(map);
+
+  const routeStyle = {
+    romantic: { color: '#fb7185', weight: 6, opacity: .9 },
+    greatest: { color: '#38bdf8', weight: 5, opacity: .88 },
+    history: { color: '#34d399', weight: 5, opacity: .88 },
+    boundary: { color: '#ef4444', weight: 4, opacity: .95, dashArray: '10 9' },
+    caution: { color: '#ef4444', weight: 4, opacity: .85, dashArray: '5 8' }
+  };
+
+  const routes = {
+    romantic: L.polyline([
+      pts.launch, pts.northEnd, pts.eastBoston, pts.skylineDrift, pts.rowesWharf, pts.ica, pts.turnBeforeBoundary, pts.skylineDrift, pts.launch
+    ], routeStyle.romantic).bindPopup('<b>Romantic Skyline Chill Loop</b><br>Slow scenic route with East Boston skyline drift and Seaport pass.'),
+    greatest: L.polyline([
+      pts.launch, pts.northEnd, pts.coastGuard, pts.navyYard, pts.ussConstitution, pts.zakimView, pts.pier6, pts.eastBoston, pts.skylineDrift, pts.rowesWharf, pts.ica, pts.turnBeforeBoundary, pts.launch
+    ], routeStyle.greatest).bindPopup('<b>Inner Harbor Greatest Hits</b><br>Most variety: historic Charlestown, Zakim view, skyline, Seaport.'),
+    history: L.polyline([
+      pts.launch, pts.northEnd, pts.coastGuard, pts.navyYard, pts.ussConstitution, pts.zakimView, pts.ussConstitution, pts.coastGuard, pts.rowesWharf, pts.launch
+    ], routeStyle.history).bindPopup('<b>History + Architecture Loop</b><br>North End, Coast Guard Base area, Navy Yard, USS Constitution, Zakim viewpoint.')
+  };
+
+  const cautionLayers = L.layerGroup([
+    L.polyline([pts.hyattLogan, pts.legalHarborside], routeStyle.boundary).bindPopup('<b>Do not pass this general line</b><br>Hyatt Logan / Legal Harborside is the outward limit per the company FAQ.'),
+    L.polyline([pts.dontEnterLocks, pts.zakimView], routeStyle.caution).bindPopup('<b>No Charles River locks</b><br>Enjoy the bridge view from the harbor side, but do not go through the locks.')
+  ]).addTo(map);
+
+  const labels = L.layerGroup([
+    L.marker(pts.skylineDrift, {icon: L.divIcon({className:'route-label', html:'Skyline drift', iconSize:null})}),
+    L.marker(pts.turnBeforeBoundary, {icon: L.divIcon({className:'route-label', html:'Turn back before boundary', iconSize:null})}),
+    L.marker(pts.zakimView, {icon: L.divIcon({className:'route-label', html:'Zakim view — no locks', iconSize:null})})
+  ]).addTo(map);
+
+  let activeLayers = L.layerGroup().addTo(map);
+  const boundsPadding = window.innerWidth < 720 ? [26, 230] : [420, 40];
+
+  function setRoute(key) {
+    activeLayers.clearLayers();
+    document.querySelectorAll('button[data-route]').forEach(btn => btn.classList.toggle('active', btn.dataset.route === key));
+    document.querySelectorAll('.route-card').forEach(card => card.classList.remove('active'));
+    const card = document.getElementById(`card-${key}`);
+    if (card) card.classList.add('active');
+
+    let layersToShow = [];
+    if (key === 'all') {
+      layersToShow = [routes.romantic, routes.greatest, routes.history];
+    } else {
+      layersToShow = [routes[key]];
+    }
+    layersToShow.forEach(layer => activeLayers.addLayer(layer));
+
+    const group = L.featureGroup([...layersToShow, cautionLayers, markers]);
+    map.fitBounds(group.getBounds(), { paddingTopLeft: [16,16], paddingBottomRight: boundsPadding, maxZoom: 15 });
+  }
+
+  document.querySelectorAll('button[data-route]').forEach(btn => {
+    btn.addEventListener('click', () => setRoute(btn.dataset.route));
+    btn.addEventListener('touchend', (e) => { e.preventDefault(); setRoute(btn.dataset.route); }, {passive:false});
+  });
+
+  setRoute('romantic');
+  setTimeout(() => map.invalidateSize(), 250);
+  window.addEventListener('resize', () => setTimeout(() => map.invalidateSize(), 150));
+});
+</script>
+</body>
+</html>
